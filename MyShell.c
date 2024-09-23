@@ -10,6 +10,8 @@
 
 #define MAXPWD 1000
 #define MAXHISTORY 1000
+int is_bg = 0;
+
 
 typedef struct {
     char* command;
@@ -27,6 +29,12 @@ static void my_handler(int signum) {
         exit(0);
     } 
 }
+
+static void sigchld_handler(int signum) {
+    if (signum == SIGCHLD) 
+        while (waitpid(-1, NULL, WNOHANG) > 0) ;
+}
+
 
 void printCurrDir() {
     char pwd[MAXPWD];
@@ -118,8 +126,12 @@ void execute_single_command(char** args) {
             printf("Error: command not found!\n");
             exit(0);
         }
-    } else {
-        wait(NULL);
+    } 
+    else {
+        if (!is_bg) wait(NULL);
+        else {
+            printf("process moved to background with PID %d\n", pid);
+        }
     }
 }
 
@@ -197,6 +209,7 @@ int main() {
     struct sigaction sig;
     memset(&sig, 0, sizeof(sig));
     sig.sa_handler = my_handler;
+    signal(SIGCHLD, sigchld_handler);
     sigaction(SIGINT, &sig, NULL);  
 
     char input[MAXPWD];
@@ -209,10 +222,17 @@ int main() {
         printf("\033[0;32m");
         printCurrDir();
         printf("\033[0m"); 
+
         take_input(input);
         strcpy(input_copy, input);
 
         if (input[0] == '\0') continue;
+
+        if (input[strlen(input)-1] == '&') {
+            is_bg = 1;
+            input[strlen(input) - 1] = '\0';
+        }
+        else is_bg = 0;
 
         clock_t t = clock();
 
