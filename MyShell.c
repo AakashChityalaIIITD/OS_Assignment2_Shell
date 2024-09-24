@@ -200,7 +200,7 @@ void execute_piped_commands(char* commands[], int num_commands, char* input_copy
     time_t start_time;
     time(&start_time);
     int fds[2 * (num_commands - 1)];
-    pid_t pid;
+    pid_t pids[MAXPWD];
 
     for (int i = 0; i < num_commands - 1; ++i) {
         if (pipe(fds + 2 * i) < 0) {
@@ -210,11 +210,11 @@ void execute_piped_commands(char* commands[], int num_commands, char* input_copy
     }
 
     for (int i = 0; i < num_commands; ++i) {
-        pid = fork();
-        if (pid < 0) {
+        pids[i] = fork();
+        if (pids[i] < 0) {
             perror("fork failed\n");
             exit(1);
-        } else if (pid == 0) {
+        } else if (pids[i] == 0) {
             if (i > 0) {
                 dup2(fds[(i - 1) * 2], 0); 
             }
@@ -239,14 +239,21 @@ void execute_piped_commands(char* commands[], int num_commands, char* input_copy
         close(fds[i]);
     }
 
-    // Wait for all children
-    for (int i = 0; i < num_commands; ++i) {
-        wait(NULL);
+    if (!is_bg) {
+        // wait for all children to complete
+        for (int i = 0; i < num_commands; ++i) {
+            waitpid(pids[i], NULL, 0);
+        }
+    } else {
+        for (int i = 0; i < num_commands; ++i) {
+            printf("Process moved to background with PID %d\n", pids[i]);
+        }
     }
 
     double exec_time = ((double)(clock() - clock_start)) / CLOCKS_PER_SEC;
-    add_to_history(input_copy, exec_time, pid, start_time);
+    add_to_history(input_copy, exec_time, pids[num_commands - 1], start_time);
 }
+
 
 
 int main() {
