@@ -54,7 +54,7 @@ void printCurrDir() {
 
 void builtin_cd(char** args) {
     if (args[1] == NULL) {
-        perror("cd: expected argument\n");
+        perror("cd: expected argument not given\n");
     }
     else if (chdir(args[1]) != 0) {
         perror("cd failed\n");
