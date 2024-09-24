@@ -14,6 +14,8 @@ int is_bg = 0;
 
 
 typedef struct {
+    pid_t pid;
+    time_t start_time;
     char* command;
     double execution_time;
 } CommandHistory;
@@ -73,18 +75,31 @@ void builtin_clear() {
 }
 
 void builtin_history() {
+    printf("\nCommand History:\n");
+    printf("%-5s %-10s %-40s %-30s %s\n", "No.", "PID", "Command", "Start Time", "Execution Time");
+
     for (int i = 0; i < history_count; ++i) {
-        printf("%d. %s (%.6f sec)\n", i + 1, history[i].command, history[i].execution_time);
+        char time_buf[26];
+        ctime_r(&history[i].start_time, time_buf);
+        time_buf[strcspn(time_buf, "\n")] = 0; // Remove newline character
+
+        printf("%-5d %-10d %-40s %-30s %.6f sec\n", 
+               i + 1, history[i].pid, history[i].command, time_buf, history[i].execution_time);
     }
+
 }
 
-void add_to_history(char* command, double exec_time) {
+
+
+void add_to_history(char* command, double exec_time, pid_t pid, time_t start_time) {
     if (history_count < MAXHISTORY) {
         history[history_count].command = strdup(command);
         history[history_count].execution_time = exec_time;
+        history[history_count].pid = pid; 
+        history[history_count].start_time = start_time; 
         history_count++;
     } else {
-        printf("history is full!\n");
+        printf("History is full!\n");
     }
 }
 
@@ -102,6 +117,7 @@ int chk_builtin(char** parsed_command) {
         builtin_history();
         return 1;
     } else if (strcmp(parsed_command[0], "exit") == 0) {
+        builtin_history();
         exit(0);
     }
     return 0;
@@ -117,7 +133,10 @@ void tokenize(char* input, char **args) {
     args[i] = NULL;
 }
 
-void execute_single_command(char** args) {
+void execute_single_command(char** args, char* input_copy) {
+    clock_t clock_start = clock();
+    time_t start_time;
+    time(&start_time);
     pid_t pid = fork();
     if (pid < 0) {
         printf("Error occurred while forking!\n");
@@ -126,11 +145,13 @@ void execute_single_command(char** args) {
             printf("Error: command not found!\n");
             exit(0);
         }
-    } 
-    else {
-        if (!is_bg) wait(NULL);
-        else {
-            printf("process moved to background with PID %d\n", pid);
+    } else {
+        if (!is_bg) {
+            wait(NULL);
+            double exec_time = ((double)(clock() - clock_start)) / CLOCKS_PER_SEC;
+            add_to_history(input_copy, exec_time, pid, start_time);
+        } else {
+            printf("Process moved to background with PID %d\n", pid);
         }
     }
 }
@@ -157,7 +178,11 @@ void split_pipes(char* input, char* commands[], int* num_commands) {
     *num_commands = i;
 }
 
-void execute_piped_commands(char* commands[], int num_commands) {
+
+void execute_piped_commands(char* commands[], int num_commands, char* input_copy) {
+    clock_t clock_start = clock();
+    time_t start_time;
+    time(&start_time);
     int fds[2 * (num_commands - 1)];
     pid_t pid;
 
@@ -173,8 +198,7 @@ void execute_piped_commands(char* commands[], int num_commands) {
         if (pid < 0) {
             perror("fork failed\n");
             exit(1);
-        } 
-        else if (pid == 0) {
+        } else if (pid == 0) {
             if (i > 0) {
                 dup2(fds[(i - 1) * 2], 0); 
             }
@@ -203,7 +227,11 @@ void execute_piped_commands(char* commands[], int num_commands) {
     for (int i = 0; i < num_commands; ++i) {
         wait(NULL);
     }
+
+    double exec_time = ((double)(clock() - clock_start)) / CLOCKS_PER_SEC;
+    add_to_history(input_copy, exec_time, pid, start_time);
 }
+
 
 int main() {
     struct sigaction sig;
@@ -224,8 +252,6 @@ int main() {
         printf("\033[0m"); 
 
         take_input(input);
-        strcpy(input_copy, input);
-
         if (input[0] == '\0') continue;
 
         if (input[strlen(input)-1] == '&') {
@@ -234,22 +260,18 @@ int main() {
         }
         else is_bg = 0;
 
-        clock_t t = clock();
+        strcpy(input_copy, input);
 
         if (chk_pipe(input)) {
             split_pipes(input, commands, &num_commands);
-            execute_piped_commands(commands, num_commands);
+            execute_piped_commands(commands, num_commands, input_copy);
         } else {
             tokenize(input, args);
             if (!chk_builtin(args)) {
-                execute_single_command(args);
+                execute_single_command(args, input_copy);
             }
         }
 
-        t = clock() - t;
-        double exec_time = ((double)t) / CLOCKS_PER_SEC;
 
-        // Store command in history
-        add_to_history(input_copy, exec_time);
     }
 }
