@@ -23,9 +23,25 @@ typedef struct {
 CommandHistory history[MAXHISTORY];
 int history_count = 0;
 
+
+void builtin_history() {
+    printf("%-5s %-10s %-40s %-30s %s\n", "No.", "PID", "Command", "Start Time", "Execution Time");
+
+    for (int i = 0; i < history_count; ++i) {
+        char time_buf[26];
+        ctime_r(&history[i].start_time, time_buf);
+        time_buf[strcspn(time_buf, "\n")] = 0; // Remove newline character
+
+        printf("%-5d %-10d %-40s %-30s %.6f sec\n", 
+               i + 1, history[i].pid, history[i].command, time_buf, history[i].execution_time);
+    }
+
+}
+
 static void my_handler(int signum) {
     static int counter = 0;  
     if (signum == SIGINT) {
+        builtin_history();
         char buff1[23] = "\nCaught SIGINT signal";
         write(STDOUT_FILENO, buff1, 23);
         exit(0);
@@ -54,7 +70,7 @@ void printCurrDir() {
 
 void builtin_cd(char** args) {
     if (args[1] == NULL) {
-        perror("cd: expected argument\n");
+        perror("cd: expected argument not given\n");
     }
     else if (chdir(args[1]) != 0) {
         perror("cd failed\n");
@@ -74,20 +90,7 @@ void builtin_clear() {
     printf("\033[H\033[J");
 }
 
-void builtin_history() {
-    printf("\nCommand History:\n");
-    printf("%-5s %-10s %-40s %-30s %s\n", "No.", "PID", "Command", "Start Time", "Execution Time");
 
-    for (int i = 0; i < history_count; ++i) {
-        char time_buf[26];
-        ctime_r(&history[i].start_time, time_buf);
-        time_buf[strcspn(time_buf, "\n")] = 0; // Remove newline character
-
-        printf("%-5d %-10d %-40s %-30s %.6f sec\n", 
-               i + 1, history[i].pid, history[i].command, time_buf, history[i].execution_time);
-    }
-
-}
 
 
 
@@ -103,25 +106,38 @@ void add_to_history(char* command, double exec_time, pid_t pid, time_t start_tim
     }
 }
 
-int chk_builtin(char** parsed_command) {
+int chk_builtin(char** parsed_command, char* input_copy) {
+    clock_t clock_start = clock();
+    time_t start_time;
+    time(&start_time);
+    int chk_builtin = 0;
+
     if (strcmp(parsed_command[0], "cd") == 0) {
         builtin_cd(parsed_command);
-        return 1;
+        chk_builtin = 1;
     } else if (strcmp(parsed_command[0], "pwd") == 0) {
         builtin_pwd();
-        return 1;
+        chk_builtin = 1;
     } else if (strcmp(parsed_command[0], "clear") == 0) {
         builtin_clear();
-        return 1;
+        chk_builtin = 1;
     } else if (strcmp(parsed_command[0], "history") == 0) {
         builtin_history();
-        return 1;
+        chk_builtin = 1;
     } else if (strcmp(parsed_command[0], "exit") == 0) {
         builtin_history();
         exit(0);
     }
-    return 0;
+
+    if (chk_builtin) {
+        double exec_time = ((double)(clock() - clock_start)) / CLOCKS_PER_SEC;
+        add_to_history(input_copy, exec_time, getpid(), start_time); 
+    }
+
+    return chk_builtin;
 }
+
+
 
 void tokenize(char* input, char **args) {
     int i = 0;
@@ -267,7 +283,7 @@ int main() {
             execute_piped_commands(commands, num_commands, input_copy);
         } else {
             tokenize(input, args);
-            if (!chk_builtin(args)) {
+            if (!chk_builtin(args, input_copy)) {
                 execute_single_command(args, input_copy);
             }
         }
