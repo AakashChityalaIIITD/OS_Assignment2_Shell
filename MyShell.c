@@ -168,6 +168,7 @@ void execute_single_command(char** args, char* input_copy) {
             add_to_history(input_copy, exec_time, pid, start_time);
         } else {
             printf("Process moved to background with PID %d\n", pid);
+            add_to_history(input_copy, 0.0, pid, start_time);
         }
     }
 }
