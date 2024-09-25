@@ -142,7 +142,7 @@ int chk_builtin(char** parsed_command, char* input_copy) {
 }
 
 
-// This is used to parse the command
+// This is used to parse or tokenize the command
 void tokenize(char* input, char **args) {
     int i = 0;
     char *token = strtok(input, " ");
