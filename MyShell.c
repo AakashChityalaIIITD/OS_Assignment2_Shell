@@ -20,10 +20,10 @@ typedef struct {
     double execution_time;
 } CommandHistory;
 
-CommandHistory history[MAXHISTORY];
+CommandHistory history[MAXHISTORY];  // this array is initialized to store history of all executed commands and stores their relevant data like, pid, start_time, etc.
 int history_count = 0;
 
-
+// prints history of all the entered commands which are stored in history
 void builtin_history() {
     printf("%-5s %-10s %-40s %-30s %s\n", "No.", "PID", "Command", "Start Time", "Execution Time");
 
@@ -38,6 +38,7 @@ void builtin_history() {
 
 }
 
+// handler to catch SIGINT interruption (ctrl + C)
 static void my_handler(int signum) {
     static int counter = 0;  
     if (signum == SIGINT) {
@@ -48,16 +49,18 @@ static void my_handler(int signum) {
     } 
 }
 
+
+// handler to catch SIGCHLD interruption (child termination either by ctrl + Z or something else)
 static void sigchld_handler(int signum) {
     if (signum == SIGCHLD) 
         while (waitpid(-1, NULL, WNOHANG) > 0) ;
 }
 
-
+// prints current directory
 void printCurrDir() {
     char pwd[MAXPWD];
     if (getcwd(pwd, sizeof(pwd)) != NULL) {
-        char *last_dir = strrchr(pwd, '/');
+        char *last_dir = strrchr(pwd, '/'); // finds last occurence of '/'
         if (last_dir != NULL && *(last_dir + 1) != '\0') {
             printf("MySimpleShell %s: ", last_dir + 1);
         } else {
@@ -68,6 +71,7 @@ void printCurrDir() {
     }
 }
 
+// implements cd function by changing directory using chdir
 void builtin_cd(char** args) {
     if (args[1] == NULL) {
         perror("cd: expected argument not given\n");
@@ -77,6 +81,7 @@ void builtin_cd(char** args) {
     }
 }
 
+// prints out the working directory
 void builtin_pwd() {
     char cwd[MAXPWD];
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -87,11 +92,8 @@ void builtin_pwd() {
 }
 
 void builtin_clear() {
-    printf("\033[H\033[J");
+    printf("\033[H\033[J");  // this is a terminal escape sequence which clears the screen
 }
-
-
-
 
 
 void add_to_history(char* command, double exec_time, pid_t pid, time_t start_time) {
@@ -106,6 +108,8 @@ void add_to_history(char* command, double exec_time, pid_t pid, time_t start_tim
     }
 }
 
+
+// checks to see whether the entered command is a built in function or not. If it is, then it runs using the above created functions, else it runs using the 'execute_single_command' function
 int chk_builtin(char** parsed_command, char* input_copy) {
     clock_t clock_start = clock();
     time_t start_time;
@@ -138,7 +142,7 @@ int chk_builtin(char** parsed_command, char* input_copy) {
 }
 
 
-
+// This is used to parse the command
 void tokenize(char* input, char **args) {
     int i = 0;
     char *token = strtok(input, " ");
@@ -149,6 +153,8 @@ void tokenize(char* input, char **args) {
     args[i] = NULL;
 }
 
+// This function is executed when the entered command in not any of the built in commands
+// We first use fork() to create a child process and then inside it we utlize the execvp() function override the current program to call that argument which we want to process
 void execute_single_command(char** args, char* input_copy) {
     clock_t clock_start = clock();
     time_t start_time;
@@ -163,7 +169,7 @@ void execute_single_command(char** args, char* input_copy) {
         }
     } else {
         if (!is_bg) {
-            wait(NULL);
+            wait(NULL); // waits for prcess to finish
             double exec_time = ((double)(clock() - clock_start)) / CLOCKS_PER_SEC;
             add_to_history(input_copy, exec_time, pid, start_time);
         } else {
@@ -174,7 +180,7 @@ void execute_single_command(char** args, char* input_copy) {
 }
 
 void take_input(char* input) {
-    char *input_line = readline("");
+    char *input_line = readline("");  // reads input from user in shell
     if (input_line) {
         strcpy(input, input_line);
         free(input_line);
@@ -185,6 +191,7 @@ int chk_pipe(char* input) {
     return strchr(input, '|') != NULL;
 }
 
+// splits piped commands into individual commands
 void split_pipes(char* input, char* commands[], int* num_commands) {
     char* token = strtok(input, "|");
     int i = 0;
@@ -261,7 +268,7 @@ int main() {
     struct sigaction sig;
     memset(&sig, 0, sizeof(sig));
     sig.sa_handler = my_handler;
-    signal(SIGCHLD, sigchld_handler);
+    signal(SIGCHLD, sigchld_handler); // Below 2 lines handle the signal interruptions
     sigaction(SIGINT, &sig, NULL);  
 
     char input[MAXPWD];
@@ -295,7 +302,5 @@ int main() {
                 execute_single_command(args, input_copy);
             }
         }
-
-
     }
 }
